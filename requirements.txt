@@ -1,0 +1,16 @@
+# Backend Framework
+fastapi
+uvicorn[standard]
+
+# Database
+sqlalchemy
+
+# AI
+openai>=1.0.0
+
+# Environment variables
+python-dotenv
+
+# Testing
+pytest
+httpx
