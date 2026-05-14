@@ -12,4 +12,4 @@ class Task(Base):
     due_date = Column(DateTime, nullable=True)
     completed = Column(Boolean, default=False)
     category = Column(String, default="Uncategorized")
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))

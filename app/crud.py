@@ -14,7 +14,7 @@ def get_tasks(db: Session, skip: int = 0, limit: int = 100):
 # READ overdue tasks
 def get_overdue_tasks(db: Session):
     return db.query(models.Task).filter(
-        models.Task.due_date < datetime.datetime.utcnow(),
+        models.Task.due_date < datetime.datetime.now(datetime.UTC),
         models.Task.completed == False
     ).all()
 

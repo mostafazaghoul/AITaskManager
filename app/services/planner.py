@@ -34,7 +34,7 @@ def generate_daily_plan(tasks: List[schemas.Task]) -> str:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a world-class productivity coach."},
                 {"role": "user", "content": prompt_content}

@@ -1,12 +1,12 @@
 # app/schemas.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 import datetime
 
 # Base schema for a task, contains common attributes
 class TaskBase(BaseModel):
-    title: str = Field(..., min_length=1, max_length=100, example="Read a book")
-    description: Optional[str] = Field(None, max_length=500, example="Read 'Clean Code' for 1 hour.")
+    title: str = Field(..., min_length=1, max_length=100, examples=["Read a book"])
+    description: Optional[str] = Field(None, max_length=500, examples=["Read 'Clean Code' for 1 hour."])
     due_date: Optional[datetime.datetime] = None
 
 # Schema for creating a task (doesn't have ID, etc.)
@@ -28,9 +28,7 @@ class Task(TaskBase):
     category: str
     created_at: datetime.datetime
 
-    class Config:
-        from_attributes = True # Pydantic V2
-        # orm_mode = True # Pydantic V1
+    model_config = ConfigDict(from_attributes=True)
 
 # Schema for AI-generated daily plan
 class DailyPlanResponse(BaseModel):
