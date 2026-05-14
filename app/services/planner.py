@@ -17,16 +17,19 @@ def generate_daily_plan(tasks: List[schemas.Task]) -> str:
         return "No tasks for today! Time to relax or add some new ones."
 
     task_list_str = "\n".join(
-        f"- {task.title} (Due: {task.due_date.strftime('%Y-%m-%d %H:%M') if task.due_date else 'No due date'}, Category: {task.category})"
+        f"- [{task.priority}] {task.title} "
+        f"(Due: {task.due_date.strftime('%Y-%m-%d %H:%M') if task.due_date else 'No due date'}, "
+        f"Category: {task.category})"
         for task in tasks
     )
 
     prompt_content = f"""
-    You are a productivity expert. Given the following list of tasks for today, create a smart,
-    prioritized, and motivational daily schedule. Group tasks logically (e.g., by context like 'Deep Work' or 'Errands').
-    Provide actionable advice and suggest a realistic timeline. Be encouraging and positive.
+    You are a productivity expert. Given the following tasks (each tagged with a priority level),
+    create a smart, prioritized daily schedule. Schedule High priority tasks during peak morning hours.
+    Group related tasks by context (e.g. 'Deep Work', 'Errands', 'Admin'). Suggest a realistic
+    timeline and be encouraging.
 
-    Here are the tasks:
+    Tasks:
     {task_list_str}
 
     Your suggested plan:

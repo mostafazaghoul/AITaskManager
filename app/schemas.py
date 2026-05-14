@@ -3,33 +3,43 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 import datetime
 
-# Base schema for a task, contains common attributes
+VALID_PRIORITIES = ["High", "Medium", "Low"]
+
 class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100, examples=["Read a book"])
     description: Optional[str] = Field(None, max_length=500, examples=["Read 'Clean Code' for 1 hour."])
     due_date: Optional[datetime.datetime] = None
+    priority: str = Field("Medium", examples=["Medium"])
 
-# Schema for creating a task (doesn't have ID, etc.)
 class TaskCreate(TaskBase):
     pass
 
-# Schema for updating a task (all fields are optional)
 class TaskUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     due_date: Optional[datetime.datetime] = None
     completed: Optional[bool] = None
+    priority: Optional[str] = None
     category: Optional[str] = None
 
-# Schema for reading a task (includes all database fields)
 class Task(TaskBase):
     id: int
     completed: bool
+    priority: str
     category: str
     created_at: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)
 
-# Schema for AI-generated daily plan
 class DailyPlanResponse(BaseModel):
     plan: str
+
+# Natural language parsing
+class NaturalLanguageInput(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500, examples=["Meet with team tomorrow at 9am"])
+
+class ParsedTask(BaseModel):
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime.datetime] = None
+    priority: str = "Medium"

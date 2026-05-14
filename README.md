@@ -2,6 +2,7 @@
 
 A smart REST API for managing daily tasks with AI-assisted categorization and daily planning. Built with Python, FastAPI, SQLAlchemy, and the OpenAI API.
 
+[![CI](https://github.com/mostafazaghoul/AITaskManager/actions/workflows/ci.yml/badge.svg)](https://github.com/mostafazaghoul/AITaskManager/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![Framework](https://img.shields.io/badge/framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -11,6 +12,10 @@ A smart REST API for managing daily tasks with AI-assisted categorization and da
 ## How It Works
 
 The app is a standard REST API with two layers of intelligence sitting on top of basic task management:
+
+### 0. Natural Language Parsing (`POST /ai/parse`)
+
+Type something like `"urgent meeting with Alex tomorrow at 3pm"` and the API returns structured fields — title, due date, and priority — extracted by GPT. The web UI uses this to pre-fill the task form so you can review before saving.
 
 ### 1. AI Categorization (on every task creation)
 
@@ -70,6 +75,7 @@ HTTP Request → Route → (Service for AI logic) → CRUD → Database
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `POST` | `/ai/parse` | Parse natural language into structured task fields |
 | `GET` | `/ai/plan/daily` | Generate a prioritized daily plan from all incomplete tasks |
 | `GET` | `/ai/summary/overdue` | List all tasks past their due date |
 

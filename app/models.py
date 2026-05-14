@@ -11,5 +11,6 @@ class Task(Base):
     description = Column(String, nullable=True)
     due_date = Column(DateTime, nullable=True)
     completed = Column(Boolean, default=False)
+    priority = Column(String, default="Medium")
     category = Column(String, default="Uncategorized")
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
