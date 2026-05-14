@@ -1,6 +1,7 @@
 # Backend Framework
 fastapi
 uvicorn[standard]
+aiofiles
 
 # Database
 sqlalchemy

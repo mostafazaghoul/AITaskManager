@@ -1,5 +1,7 @@
 # app/main.py
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from .database import create_database_tables
 from .routes import tasks, ai
 from dotenv import load_dotenv
@@ -11,16 +13,19 @@ load_dotenv()
 # Create database tables on startup
 create_database_tables()
 
+_STATIC = os.path.join(os.path.dirname(__file__), "static")
+
 app = FastAPI(
     title="AI-Powered To-Do List API",
     description="A smart, extensible REST API for managing daily tasks with AI assistance.",
     version="1.0.0",
 )
 
-# Health check endpoint
-@app.get("/", tags=["Root"])
-def read_root():
-    return {"message": "Welcome to the AI-Powered To-Do List API!"}
+app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+
+@app.get("/", include_in_schema=False)
+def serve_ui():
+    return FileResponse(os.path.join(_STATIC, "index.html"))
 
 # Include routers
 app.include_router(tasks.router)
