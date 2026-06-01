@@ -34,6 +34,15 @@ class Task(TaskBase):
 class DailyPlanResponse(BaseModel):
     plan: str
 
+# Task statistics
+class TaskStats(BaseModel):
+    total: int
+    completed: int
+    active: int
+    completion_rate: float
+    by_priority: dict
+    by_category: dict
+
 # Natural language parsing
 class NaturalLanguageInput(BaseModel):
     text: str = Field(..., min_length=1, max_length=500, examples=["Meet with team tomorrow at 9am"])

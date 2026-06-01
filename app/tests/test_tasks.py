@@ -44,6 +44,21 @@ def test_update_task(client: TestClient):
     assert data["title"] == "New Title"
     assert data["completed"] is True
 
+def test_get_stats(client: TestClient):
+    client.post("/tasks/", json={"title": "Task A", "priority": "High"})
+    client.post("/tasks/", json={"title": "Task B", "priority": "Low"})
+    client.put("/tasks/1", json={"completed": True})
+
+    response = client.get("/tasks/stats")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 2
+    assert data["completed"] == 1
+    assert data["active"] == 1
+    assert data["completion_rate"] == 50.0
+    assert data["by_priority"]["High"] == 1
+    assert data["by_priority"]["Low"] == 1
+
 def test_delete_task(client: TestClient):
     # Create a task
     create_response = client.post("/tasks/", json={"title": "To be deleted"})

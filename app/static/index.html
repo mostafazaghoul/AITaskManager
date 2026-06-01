@@ -474,11 +474,91 @@
         #toast.err { background: var(--danger); }
         #toast.info { background: var(--primary); }
 
+        /* ── Stats bar ───────────────────────────────── */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 1rem;
+            padding: .85rem 1.2rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        .stats-numbers {
+            display: flex;
+            gap: 1.1rem;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+            gap: .1rem;
+        }
+
+        .stat-value {
+            font-size: 1.15rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: .68rem;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            color: var(--muted);
+        }
+
+        .progress-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: .3rem;
+        }
+
+        .progress-track {
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 99px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--success);
+            border-radius: 99px;
+            transition: width .4s ease;
+        }
+
+        .progress-label {
+            font-size: .7rem;
+            color: var(--muted);
+            text-align: right;
+        }
+
+        .priority-pills {
+            display: flex;
+            gap: .35rem;
+        }
+
+        .pill {
+            font-size: .7rem;
+            font-weight: 600;
+            padding: .2rem .45rem;
+            border-radius: 99px;
+            white-space: nowrap;
+        }
+
+        .pill-high   { background: #fee2e2; color: #b91c1c; }
+        .pill-medium { background: #fef3c7; color: #92400e; }
+        .pill-low    { background: #dcfce7; color: #166534; }
+
         /* ── Responsive ──────────────────────────────── */
         @media (max-width: 720px) {
             .container { grid-template-columns: 1fr; padding: 1rem; }
             .ai-panel  { position: static; }
             .form-grid { grid-template-columns: 1fr; }
+            .stats-bar { grid-template-columns: 1fr; gap: .6rem; }
         }
     </style>
 </head>
@@ -548,6 +628,31 @@
             </form>
         </div>
 
+        <!-- Stats bar -->
+        <div class="stats-bar" id="stats-bar" style="display:none">
+            <div class="stats-numbers">
+                <div class="stat">
+                    <span class="stat-value" id="stat-total">0</span>
+                    <span class="stat-label">Total</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="stat-done" style="color:var(--success)">0</span>
+                    <span class="stat-label">Done</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="stat-active">0</span>
+                    <span class="stat-label">Active</span>
+                </div>
+            </div>
+            <div class="progress-wrap">
+                <div class="progress-track">
+                    <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+                </div>
+                <div class="progress-label" id="progress-label">0% complete</div>
+            </div>
+            <div class="priority-pills" id="priority-pills"></div>
+        </div>
+
         <!-- Task list -->
         <div class="card">
             <div class="tasks-header">
@@ -595,6 +700,7 @@
     /* ── Boot ──────────────────────────────────────── */
     document.addEventListener('DOMContentLoaded', () => {
         fetchTasks();
+        fetchStats();
         document.getElementById('task-form').addEventListener('submit', createTask);
         document.querySelectorAll('.filter-btn').forEach(btn =>
             btn.addEventListener('click', () => {
@@ -665,6 +771,26 @@
         } finally {
             setBtn(btn, 'Parse', false);
         }
+    }
+
+    /* ── Stats ─────────────────────────────────────── */
+    async function fetchStats() {
+        try {
+            const s = await api('/tasks/stats');
+            document.getElementById('stats-bar').style.display = s.total > 0 ? '' : 'none';
+            document.getElementById('stat-total').textContent  = s.total;
+            document.getElementById('stat-done').textContent   = s.completed;
+            document.getElementById('stat-active').textContent = s.active;
+            document.getElementById('progress-fill').style.width = s.completion_rate + '%';
+            document.getElementById('progress-label').textContent = s.completion_rate + '% complete';
+
+            const order   = ['High', 'Medium', 'Low'];
+            const classes = { High: 'pill-high', Medium: 'pill-medium', Low: 'pill-low' };
+            document.getElementById('priority-pills').innerHTML = order
+                .filter(p => s.by_priority[p])
+                .map(p => `<span class="pill ${classes[p]}">${p} ${s.by_priority[p]}</span>`)
+                .join('');
+        } catch (_) { /* stats are non-critical, fail silently */ }
     }
 
     /* ── Load & render tasks ───────────────────────── */
@@ -746,6 +872,7 @@
             const task = await api('/tasks/', { method: 'POST', body: JSON.stringify(body) });
             tasks.push(task);
             render();
+            fetchStats();
             e.target.reset();
             document.getElementById('f-priority').value = 'Medium';
             toast(`Added "${task.title}" — categorized as ${task.category}`, 'ok');
@@ -765,6 +892,7 @@
             });
             tasks = tasks.map(t => t.id === id ? updated : t);
             render();
+            fetchStats();
             toast(completed ? 'Marked as done ✓' : 'Re-opened.', 'ok');
         } catch (err) {
             toast('Update failed: ' + err.message, 'err');
@@ -778,6 +906,7 @@
             await api(`/tasks/${id}`, { method: 'DELETE' });
             tasks = tasks.filter(t => t.id !== id);
             render();
+            fetchStats();
             toast('Task deleted.', 'ok');
         } catch (err) {
             toast('Delete failed: ' + err.message, 'err');

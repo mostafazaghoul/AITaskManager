@@ -34,6 +34,14 @@ def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
 
     return db_task
 
+@router.get("/stats", response_model=schemas.TaskStats)
+def get_stats(db: Session = Depends(get_db)):
+    """
+    Return aggregate statistics: totals, completion rate, and breakdowns
+    by priority and category.
+    """
+    return crud.get_task_stats(db)
+
 @router.get("/", response_model=List[schemas.Task])
 def read_tasks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """

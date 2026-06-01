@@ -64,6 +64,7 @@ A request flows through: **Route → Service (if AI) → CRUD → Database**, wi
 |--------|----------|-------------|
 | `POST` | `/tasks/` | Create a task |
 | `GET` | `/tasks/` | List all tasks |
+| `GET` | `/tasks/stats` | Completion rate and breakdowns by priority and category |
 | `GET` | `/tasks/{id}` | Get a single task |
 | `PUT` | `/tasks/{id}` | Update a task |
 | `DELETE` | `/tasks/{id}` | Delete a task |

@@ -1,4 +1,5 @@
 # app/crud.py
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from . import models, schemas
 import datetime
@@ -17,6 +18,31 @@ def get_overdue_tasks(db: Session):
         models.Task.due_date < datetime.datetime.now(datetime.UTC),
         models.Task.completed == False
     ).all()
+
+# STATS
+def get_task_stats(db: Session) -> dict:
+    total     = db.query(func.count(models.Task.id)).scalar()
+    completed = db.query(func.count(models.Task.id)).filter(models.Task.completed == True).scalar()
+
+    by_priority = {
+        row[0]: row[1]
+        for row in db.query(models.Task.priority, func.count(models.Task.id))
+                      .group_by(models.Task.priority).all()
+    }
+    by_category = {
+        row[0]: row[1]
+        for row in db.query(models.Task.category, func.count(models.Task.id))
+                      .group_by(models.Task.category).all()
+    }
+
+    return {
+        "total": total,
+        "completed": completed,
+        "active": total - completed,
+        "completion_rate": round(completed / total * 100, 1) if total else 0.0,
+        "by_priority": by_priority,
+        "by_category": by_category,
+    }
 
 # CREATE a new task
 def create_task(db: Session, task: schemas.TaskCreate):
