@@ -275,6 +275,42 @@
         }
         .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 
+        .search-row { margin-bottom: .5rem; }
+
+        .search-input {
+            width: 100%;
+            padding: .42rem .75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: .84rem;
+            font-family: inherit;
+            color: var(--text);
+            background: var(--bg);
+            outline: none;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .search-input:focus {
+            border-color: var(--primary);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(79,70,229,.1);
+        }
+
+        .cat-filters { display: flex; flex-wrap: wrap; gap: .28rem; margin-bottom: .5rem; }
+
+        .cat-filter-btn {
+            padding: .18rem .52rem;
+            border-radius: 99px;
+            font-size: .72rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            transition: all .15s;
+            font-family: inherit;
+        }
+        .cat-filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
         #task-list { display: flex; flex-direction: column; gap: .42rem; min-height: 56px; }
 
         .task-item {
@@ -553,6 +589,52 @@
         .pill-medium { background: #fef3c7; color: #92400e; }
         .pill-low    { background: #dcfce7; color: #166534; }
 
+        /* ── Inline edit ─────────────────────────────── */
+        .edit-title {
+            width: 100%;
+            padding: .3rem .5rem;
+            border: 1px solid var(--primary);
+            border-radius: 6px;
+            font-size: .875rem;
+            font-family: inherit;
+            color: var(--text);
+            background: white;
+            outline: none;
+            margin-bottom: .3rem;
+        }
+        .edit-row {
+            display: flex;
+            gap: .4rem;
+            margin-bottom: .3rem;
+        }
+        .edit-priority, .edit-due {
+            flex: 1;
+            padding: .28rem .5rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: .78rem;
+            font-family: inherit;
+            color: var(--text);
+            background: var(--bg);
+            outline: none;
+        }
+        .edit-desc {
+            width: 100%;
+            padding: .28rem .5rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: .78rem;
+            font-family: inherit;
+            color: var(--text);
+            background: var(--bg);
+            outline: none;
+            resize: vertical;
+            min-height: 42px;
+            margin-bottom: .3rem;
+        }
+        .edit-btns { display: flex; gap: .4rem; }
+        .btn-icon.edit-icon:hover { border-color: var(--primary); color: var(--primary); background: var(--ai-bg); }
+
         /* ── Responsive ──────────────────────────────── */
         @media (max-width: 720px) {
             .container { grid-template-columns: 1fr; padding: 1rem; }
@@ -586,12 +668,12 @@
             <div class="smart-row">
                 <input type="text" id="smart-input"
                     placeholder="Try: 'urgent report due Friday' or 'call dentist tomorrow at 2pm'"
-                    onkeydown="if(event.key==='Enter')smartParse()">
+                    onkeydown="if(event.key==='Enter')smartSubmit()">
                 <button class="btn btn-ai" id="smart-btn" onclick="smartParse()">
                     Parse
                 </button>
             </div>
-            <p class="smart-hint">AI extracts the title, due date, and priority — then fills the form below for you to review.</p>
+            <p class="smart-hint">↵ Enter to add instantly · Parse to preview in the form first</p>
         </div>
 
         <!-- Manual form -->
@@ -663,6 +745,12 @@
                     <button class="filter-btn" data-f="done">Done</button>
                 </div>
             </div>
+            <div class="search-row">
+                <input type="text" id="search-input" class="search-input"
+                    placeholder="Search by title or description…"
+                    oninput="onSearch(this.value)">
+            </div>
+            <div id="cat-filters" class="cat-filters"></div>
             <div id="task-list"><div class="empty-state">Loading…</div></div>
         </div>
 
@@ -694,8 +782,10 @@
 
 <script>
     /* ── State ─────────────────────────────────────── */
-    let tasks  = [];
-    let filter = 'all';
+    let tasks       = [];
+    let filter      = 'all';
+    let filterCat   = 'all';
+    let searchQuery = '';
 
     /* ── Boot ──────────────────────────────────────── */
     document.addEventListener('DOMContentLoaded', () => {
@@ -773,6 +863,41 @@
         }
     }
 
+    /* ── Smart submit (Enter = parse + create) ──────── */
+    async function smartSubmit() {
+        const input = document.getElementById('smart-input');
+        const btn   = document.getElementById('smart-btn');
+        const text  = input.value.trim();
+        if (!text) return;
+
+        setBtn(btn, '<span class="spinner"></span>', true);
+        try {
+            const parsed = await api('/ai/parse', {
+                method: 'POST',
+                body: JSON.stringify({ text }),
+            });
+
+            const body = { title: parsed.title, priority: parsed.priority || 'Medium' };
+            if (parsed.description) body.description = parsed.description;
+            if (parsed.due_date)    body.due_date    = parsed.due_date;
+
+            const task = await api('/tasks/', { method: 'POST', body: JSON.stringify(body) });
+            tasks.push(task);
+            render();
+            fetchStats();
+            input.value = '';
+
+            const parts = [`"${task.title}"`];
+            if (task.due_date) parts.push(`due ${fmtDate(new Date(task.due_date))}`);
+            if (task.priority !== 'Medium') parts.push(`${task.priority} priority`);
+            toast(`Added ${parts.join(' · ')} — ${task.category}`, 'ok');
+        } catch (err) {
+            toast('Failed: ' + err.message, 'err');
+        } finally {
+            setBtn(btn, 'Parse', false);
+        }
+    }
+
     /* ── Stats ─────────────────────────────────────── */
     async function fetchStats() {
         try {
@@ -808,22 +933,48 @@
         const list    = document.getElementById('task-list');
         const countEl = document.getElementById('task-count');
 
+        renderCategoryFilters();
+
         let visible = tasks;
         if (filter === 'active') visible = tasks.filter(t => !t.completed);
         if (filter === 'done')   visible = tasks.filter(t =>  t.completed);
+        if (filterCat !== 'all') visible = visible.filter(t => t.category === filterCat);
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            visible = visible.filter(t =>
+                t.title.toLowerCase().includes(q) ||
+                (t.description && t.description.toLowerCase().includes(q))
+            );
+        }
 
         const active = tasks.filter(t => !t.completed).length;
         countEl.textContent = `Tasks — ${active} active`;
 
         if (!visible.length) {
-            const msg = { all: 'No tasks yet. Add one above!', active: 'No active tasks — great job! 🎉', done: 'Nothing completed yet.' };
-            list.innerHTML = `<div class="empty-state">${msg[filter]}</div>`;
+            const emptyMsg = searchQuery || filterCat !== 'all'
+                ? 'No tasks match your search.'
+                : { all: 'No tasks yet. Add one above!', active: 'No active tasks — great job! 🎉', done: 'Nothing completed yet.' }[filter];
+            list.innerHTML = `<div class="empty-state">${emptyMsg}</div>`;
             return;
         }
 
         list.innerHTML = '';
         [...visible].reverse().forEach(t => list.appendChild(taskEl(t)));
     }
+
+    function renderCategoryFilters() {
+        const cats = [...new Set(tasks.map(t => t.category))].sort();
+        const el   = document.getElementById('cat-filters');
+        if (!cats.length) { el.innerHTML = ''; return; }
+        el.innerHTML = [
+            `<button class="cat-filter-btn${filterCat==='all'?' active':''}" data-cat="all" onclick="setCatFilter('all')">All</button>`,
+            ...cats.map(c => `<button class="cat-filter-btn${filterCat===c?' active':''}" data-cat="${esc(c)}" onclick="setCatFilter('${esc(c)}')">${esc(c)}</button>`)
+        ].join('');
+    }
+
+    function onSearch(val) { searchQuery = val; render(); }
+
+    function setCatFilter(cat) { filterCat = cat; render(); }
 
     function taskEl(t) {
         const due    = t.due_date ? new Date(t.due_date) : null;
@@ -847,7 +998,8 @@
                     ${dueStr}
                 </div>
             </div>
-            <div class="task-actions">
+            <div class="task-actions" style="display:flex;gap:.25rem">
+                <button class="btn btn-icon edit-icon" title="Edit" onclick="editTask(${t.id})">✎</button>
                 <button class="btn btn-icon" title="Delete" onclick="remove(${t.id})">✕</button>
             </div>`;
         return el;
@@ -912,6 +1064,59 @@
             toast('Delete failed: ' + err.message, 'err');
         }
     }
+
+    /* ── Inline edit ──────────────────────────────── */
+    function editTask(id) {
+        const t  = tasks.find(t => t.id === id);
+        if (!t) return;
+        const el   = document.getElementById(`t-${id}`);
+        const body = el.querySelector('.task-body');
+        const dueVal = t.due_date ? toDatetimeLocal(t.due_date) : '';
+
+        body.innerHTML = `
+            <input type="text" class="edit-title" value="${esc(t.title)}">
+            <div class="edit-row">
+                <select class="edit-priority">
+                    <option value="Medium" ${t.priority==='Medium'?'selected':''}>Medium</option>
+                    <option value="High"   ${t.priority==='High'  ?'selected':''}>High</option>
+                    <option value="Low"    ${t.priority==='Low'   ?'selected':''}>Low</option>
+                </select>
+                <input type="datetime-local" class="edit-due" value="${dueVal}">
+            </div>
+            <textarea class="edit-desc">${esc(t.description||'')}</textarea>
+            <div class="edit-btns">
+                <button class="btn btn-primary" style="font-size:.78rem;padding:.3rem .65rem" onclick="saveEdit(${id})">Save</button>
+                <button class="btn" style="font-size:.78rem;padding:.3rem .65rem;background:var(--bg);border:1px solid var(--border)" onclick="cancelEdit(${id})">Cancel</button>
+            </div>`;
+
+        const actions = el.querySelector('.task-actions');
+        actions.style.display = 'none';
+        body.querySelector('.edit-title').focus();
+    }
+
+    async function saveEdit(id) {
+        const el    = document.getElementById(`t-${id}`);
+        const title = el.querySelector('.edit-title').value.trim();
+        const pri   = el.querySelector('.edit-priority').value;
+        const due   = el.querySelector('.edit-due').value;
+        const desc  = el.querySelector('.edit-desc').value.trim();
+        if (!title) { toast('Title is required', 'err'); return; }
+
+        const body = { title, priority: pri, due_date: due ? new Date(due).toISOString() : null };
+        if (desc) body.description = desc; else body.description = null;
+
+        try {
+            const updated = await api(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+            tasks = tasks.map(t => t.id === id ? updated : t);
+            render();
+            fetchStats();
+            toast('Task updated', 'ok');
+        } catch (err) {
+            toast('Update failed: ' + err.message, 'err');
+        }
+    }
+
+    function cancelEdit(id) { render(); }
 
     /* ── AI: Daily Plan ────────────────────────────── */
     async function generatePlan() {
