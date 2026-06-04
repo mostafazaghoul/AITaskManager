@@ -655,6 +655,64 @@
         .edit-btns { display: flex; gap: .4rem; }
         .btn-icon.edit-icon:hover { border-color: var(--primary); color: var(--primary); background: var(--ai-bg); }
 
+        /* ── Keyboard shortcuts modal ───────────────── */
+        .shortcuts-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .18s !important;
+        }
+        .shortcuts-overlay.open { opacity: 1; pointer-events: auto; }
+
+        .shortcuts-modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 1.5rem 1.6rem;
+            width: min(400px, 90vw);
+            box-shadow: 0 20px 60px rgba(0,0,0,.2);
+        }
+        .shortcuts-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        .shortcuts-modal-header span { font-size: .88rem; font-weight: 700; }
+
+        .shortcut-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .48rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: .84rem;
+        }
+        .shortcut-row:last-child { border-bottom: none; }
+        .shortcut-desc { color: var(--muted); }
+
+        kbd {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.6rem;
+            padding: .15rem .4rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            font-size: .73rem;
+            font-family: inherit;
+            font-weight: 700;
+            color: var(--text);
+            box-shadow: 0 1px 0 var(--border);
+        }
+
         /* ── Dark mode overrides ─────────────────────── */
         [data-theme="dark"] .smart-card {
             background: linear-gradient(135deg, #1e1b4b, #2e1065);
@@ -712,6 +770,7 @@
     </div>
     <div style="display:flex;align-items:center;gap:.6rem">
         <button id="theme-btn" class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+        <button class="theme-toggle" onclick="toggleShortcuts()" title="Keyboard shortcuts (?)">⌨</button>
         <a class="header-link" href="/docs" target="_blank">API Docs ↗</a>
     </div>
 </header>
@@ -841,6 +900,35 @@
 </main>
 
 <div id="toast"></div>
+
+<div class="shortcuts-overlay" id="shortcuts-overlay" onclick="if(event.target===this)toggleShortcuts()">
+    <div class="shortcuts-modal">
+        <div class="shortcuts-modal-header">
+            <span>Keyboard Shortcuts</span>
+            <button class="btn-icon" onclick="toggleShortcuts()">✕</button>
+        </div>
+        <div class="shortcut-row">
+            <span class="shortcut-desc">New task — focus Smart Add</span>
+            <kbd>N</kbd>
+        </div>
+        <div class="shortcut-row">
+            <span class="shortcut-desc">Search tasks</span>
+            <kbd>/</kbd>
+        </div>
+        <div class="shortcut-row">
+            <span class="shortcut-desc">Toggle dark mode</span>
+            <kbd>D</kbd>
+        </div>
+        <div class="shortcut-row">
+            <span class="shortcut-desc">Dismiss / clear focus</span>
+            <kbd>Esc</kbd>
+        </div>
+        <div class="shortcut-row">
+            <span class="shortcut-desc">Show this help</span>
+            <kbd>?</kbd>
+        </div>
+    </div>
+</div>
 
 <script>
     /* ── State ─────────────────────────────────────── */
@@ -1266,6 +1354,35 @@
             .replace(/&/g,'&amp;').replace(/</g,'&lt;')
             .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
+
+    /* ── Keyboard shortcuts ────────────────────────── */
+    function toggleShortcuts() {
+        document.getElementById('shortcuts-overlay').classList.toggle('open');
+    }
+
+    document.addEventListener('keydown', e => {
+        const tag    = document.activeElement.tagName.toLowerCase();
+        const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+
+        if (e.key === 'Escape') {
+            document.getElementById('shortcuts-overlay').classList.remove('open');
+            if (typing) document.activeElement.blur();
+            return;
+        }
+        if (typing) return;
+
+        if (e.key === 'n' || e.key === 'N') {
+            e.preventDefault();
+            document.getElementById('smart-input').focus();
+        } else if (e.key === '/') {
+            e.preventDefault();
+            document.getElementById('search-input').focus();
+        } else if (e.key === 'd' || e.key === 'D') {
+            toggleTheme();
+        } else if (e.key === '?') {
+            toggleShortcuts();
+        }
+    });
 
     let toastT;
     function toast(msg, type = 'ok') {
