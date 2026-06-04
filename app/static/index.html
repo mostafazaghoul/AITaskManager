@@ -713,6 +713,115 @@
             box-shadow: 0 1px 0 var(--border);
         }
 
+        /* ── Subtasks ────────────────────────────────── */
+        .subtask-toggle-row {
+            display: flex;
+            align-items: center;
+            gap: .42rem;
+            margin-top: .42rem;
+            padding-top: .42rem;
+            border-top: 1px solid var(--border);
+            cursor: pointer;
+            user-select: none;
+            font-size: .77rem;
+            color: var(--muted);
+        }
+        .subtask-toggle-row:hover { color: var(--primary); }
+
+        .subtask-chevron { font-size: .68rem; display: inline-block; transition: transform .15s !important; }
+        .subtask-chevron.open { transform: rotate(90deg); }
+
+        .subtask-progress-text { color: var(--success); font-weight: 600; font-size: .72rem; }
+
+        .subtask-breakdown-btn {
+            margin-left: auto;
+            font-size: .7rem;
+            padding: .14rem .42rem;
+            border-radius: 5px;
+            border: 1px solid var(--ai-border);
+            background: var(--ai-bg);
+            color: var(--primary);
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+        }
+        .subtask-breakdown-btn:hover:not(:disabled) { background: var(--primary); color: white; border-color: var(--primary); }
+        .subtask-breakdown-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+        .subtask-list {
+            margin-top: .32rem;
+            padding: .38rem .45rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            display: flex;
+            flex-direction: column;
+            gap: .2rem;
+        }
+
+        .subtask-row {
+            display: flex;
+            align-items: center;
+            gap: .38rem;
+            font-size: .8rem;
+            color: var(--text);
+            padding: .15rem 0;
+        }
+
+        .subtask-check {
+            width: 13px; height: 13px;
+            flex-shrink: 0;
+            cursor: pointer;
+            accent-color: var(--success);
+        }
+
+        .subtask-title { flex: 1; line-height: 1.4; }
+        .subtask-title.done { text-decoration: line-through; color: var(--muted); }
+
+        .subtask-del {
+            padding: .12rem .28rem;
+            border-radius: 4px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: #cbd5e1;
+            font-size: .68rem;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .subtask-del:hover { border-color: var(--danger); color: var(--danger); background: #fff1f2; }
+
+        .subtask-add-row {
+            display: flex;
+            gap: .3rem;
+            margin-top: .22rem;
+        }
+
+        .subtask-input {
+            flex: 1;
+            padding: .26rem .42rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: .78rem;
+            font-family: inherit;
+            background: var(--surface);
+            color: var(--text);
+            outline: none;
+        }
+        .subtask-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,70,229,.1); }
+
+        .subtask-add-btn {
+            padding: .26rem .5rem;
+            border-radius: 6px;
+            border: 1px solid var(--primary);
+            background: var(--primary);
+            color: white;
+            font-size: .82rem;
+            font-weight: 700;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .subtask-add-btn:hover { background: var(--primary-h); }
+
         /* ── Dark mode overrides ─────────────────────── */
         [data-theme="dark"] .smart-card {
             background: linear-gradient(135deg, #1e1b4b, #2e1065);
@@ -932,10 +1041,12 @@
 
 <script>
     /* ── State ─────────────────────────────────────── */
-    let tasks       = [];
-    let filter      = 'all';
-    let filterCat   = 'all';
-    let searchQuery = '';
+    let tasks          = [];
+    let filter         = 'all';
+    let filterCat      = 'all';
+    let searchQuery    = '';
+    let subtasksCache  = {};  // task_id → subtask array
+    let expanded       = new Set();
 
     /* ── Theme ─────────────────────────────────────── */
     function initTheme() {
@@ -1161,11 +1272,25 @@
                     <span class="badge cat-${esc(t.category)}">${esc(t.category)}</span>
                     ${dueStr}
                 </div>
+                <div class="subtask-section" id="subsec-${t.id}">
+                    <div class="subtask-toggle-row" onclick="toggleSubtasks(${t.id})">
+                        <span class="subtask-chevron" id="chev-${t.id}">▸</span>
+                        <span>Subtasks</span>
+                        <span class="subtask-progress-text" id="subprog-${t.id}"></span>
+                        <button class="subtask-breakdown-btn" id="breakdown-btn-${t.id}"
+                            onclick="event.stopPropagation();aiBreakdown(${t.id})">✨ Break down</button>
+                    </div>
+                </div>
             </div>
             <div class="task-actions" style="display:flex;gap:.25rem">
                 <button class="btn btn-icon edit-icon" title="Edit" onclick="editTask(${t.id})">✎</button>
                 <button class="btn btn-icon" title="Delete" onclick="remove(${t.id})">✕</button>
             </div>`;
+
+        // If this task was already expanded, restore the subtask list
+        if (expanded.has(t.id) && subtasksCache[t.id]) {
+            renderSubtaskSection(t.id);
+        }
         return el;
     }
 
@@ -1221,6 +1346,8 @@
         try {
             await api(`/tasks/${id}`, { method: 'DELETE' });
             tasks = tasks.filter(t => t.id !== id);
+            delete subtasksCache[id];
+            expanded.delete(id);
             render();
             fetchStats();
             toast('Task deleted.', 'ok');
@@ -1281,6 +1408,128 @@
     }
 
     function cancelEdit(id) { render(); }
+
+    /* ── Subtasks ──────────────────────────────────── */
+    async function toggleSubtasks(id) {
+        if (expanded.has(id)) {
+            expanded.delete(id);
+            renderSubtaskSection(id);
+        } else {
+            expanded.add(id);
+            if (!subtasksCache[id]) {
+                try {
+                    subtasksCache[id] = await api(`/tasks/${id}/subtasks/`);
+                } catch (_) {
+                    subtasksCache[id] = [];
+                }
+            }
+            renderSubtaskSection(id);
+        }
+    }
+
+    function renderSubtaskSection(id) {
+        const section = document.getElementById(`subsec-${id}`);
+        if (!section) return;
+
+        const subs  = subtasksCache[id] || [];
+        const done  = subs.filter(s => s.completed).length;
+        const total = subs.length;
+        const isOpen = expanded.has(id);
+
+        // Update chevron
+        const chev = document.getElementById(`chev-${id}`);
+        if (chev) chev.classList.toggle('open', isOpen);
+
+        // Update progress label
+        const prog = document.getElementById(`subprog-${id}`);
+        if (prog) {
+            prog.textContent = total === 0 ? ''
+                : done === total ? '✓ All done'
+                : `${done}/${total}`;
+        }
+
+        // Remove old list if present
+        const old = section.querySelector('.subtask-list');
+        if (old) old.remove();
+        if (!isOpen) return;
+
+        // Build list
+        const list = document.createElement('div');
+        list.className = 'subtask-list';
+        list.innerHTML = subs.map(s => `
+            <div class="subtask-row" id="sub-${s.id}">
+                <input class="subtask-check" type="checkbox" ${s.completed ? 'checked' : ''}
+                    onchange="toggleSubtask(${s.id}, ${id}, this.checked)">
+                <span class="subtask-title${s.completed ? ' done' : ''}">${esc(s.title)}</span>
+                <button class="subtask-del" onclick="deleteSubtask(${s.id}, ${id})">✕</button>
+            </div>`).join('') + `
+            <div class="subtask-add-row">
+                <input type="text" class="subtask-input" id="sub-input-${id}"
+                    placeholder="Add a subtask…"
+                    onkeydown="if(event.key==='Enter')addSubtask(${id})">
+                <button class="subtask-add-btn" onclick="addSubtask(${id})">+</button>
+            </div>`;
+        section.appendChild(list);
+    }
+
+    async function addSubtask(id) {
+        const input = document.getElementById(`sub-input-${id}`);
+        const title = input ? input.value.trim() : '';
+        if (!title) return;
+        try {
+            const sub = await api(`/tasks/${id}/subtasks/`, {
+                method: 'POST',
+                body: JSON.stringify({ title }),
+            });
+            subtasksCache[id] = [...(subtasksCache[id] || []), sub];
+            renderSubtaskSection(id);
+            const newInput = document.getElementById(`sub-input-${id}`);
+            if (newInput) newInput.focus();
+        } catch (err) {
+            toast('Failed to add subtask: ' + err.message, 'err');
+        }
+    }
+
+    async function toggleSubtask(subtaskId, taskId, completed) {
+        try {
+            const updated = await api(`/tasks/${taskId}/subtasks/${subtaskId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ completed }),
+            });
+            subtasksCache[taskId] = subtasksCache[taskId].map(s => s.id === subtaskId ? updated : s);
+            renderSubtaskSection(taskId);
+        } catch (err) {
+            toast('Update failed: ' + err.message, 'err');
+        }
+    }
+
+    async function deleteSubtask(subtaskId, taskId) {
+        try {
+            await api(`/tasks/${taskId}/subtasks/${subtaskId}`, { method: 'DELETE' });
+            subtasksCache[taskId] = subtasksCache[taskId].filter(s => s.id !== subtaskId);
+            renderSubtaskSection(taskId);
+        } catch (err) {
+            toast('Delete failed: ' + err.message, 'err');
+        }
+    }
+
+    async function aiBreakdown(id) {
+        const btn = document.getElementById(`breakdown-btn-${id}`);
+        if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+        if (!expanded.has(id)) {
+            expanded.add(id);
+            if (!subtasksCache[id]) subtasksCache[id] = [];
+        }
+        try {
+            const subs = await api(`/ai/breakdown/${id}`, { method: 'POST' });
+            subtasksCache[id] = [...(subtasksCache[id] || []), ...subs];
+            renderSubtaskSection(id);
+            toast(`Added ${subs.length} subtasks`, 'ok');
+        } catch (err) {
+            toast('Breakdown failed: ' + err.message, 'err');
+            renderSubtaskSection(id);
+        }
+    }
 
     /* ── AI: Daily Plan ────────────────────────────── */
     async function generatePlan() {

@@ -1,6 +1,6 @@
 # app/schemas.py
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional
+from typing import Optional, List
 import datetime
 
 VALID_PRIORITIES = ["High", "Medium", "Low"]
@@ -52,3 +52,19 @@ class ParsedTask(BaseModel):
     description: Optional[str] = None
     due_date: Optional[datetime.datetime] = None
     priority: str = "Medium"
+
+# Subtasks
+class SubtaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200, examples=["Write the introduction"])
+
+class SubtaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    completed: Optional[bool] = None
+
+class Subtask(BaseModel):
+    id: int
+    task_id: int
+    title: str
+    completed: bool
+    created_at: datetime.datetime
+    model_config = ConfigDict(from_attributes=True)

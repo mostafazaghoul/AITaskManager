@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from .database import create_database_tables
-from .routes import tasks, ai
+from .routes import tasks, ai, subtasks
 from dotenv import load_dotenv
 import os
 
@@ -29,6 +29,7 @@ def serve_ui():
 
 # Include routers
 app.include_router(tasks.router)
+app.include_router(subtasks.router)
 app.include_router(ai.router)
 
 # Basic check for OpenAI API Key

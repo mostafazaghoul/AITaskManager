@@ -74,3 +74,33 @@ def delete_task(db: Session, task_id: int):
     db.delete(db_task)
     db.commit()
     return db_task
+
+# ── Subtask CRUD ──────────────────────────────────────────────────────────────
+
+def get_subtasks(db: Session, task_id: int):
+    return db.query(models.Subtask).filter(models.Subtask.task_id == task_id).order_by(models.Subtask.created_at).all()
+
+def create_subtask(db: Session, task_id: int, subtask: schemas.SubtaskCreate):
+    db_sub = models.Subtask(task_id=task_id, **subtask.model_dump())
+    db.add(db_sub)
+    db.commit()
+    db.refresh(db_sub)
+    return db_sub
+
+def update_subtask(db: Session, subtask_id: int, subtask_update: schemas.SubtaskUpdate):
+    db_sub = db.query(models.Subtask).filter(models.Subtask.id == subtask_id).first()
+    if not db_sub:
+        return None
+    for key, value in subtask_update.model_dump(exclude_unset=True).items():
+        setattr(db_sub, key, value)
+    db.commit()
+    db.refresh(db_sub)
+    return db_sub
+
+def delete_subtask(db: Session, subtask_id: int):
+    db_sub = db.query(models.Subtask).filter(models.Subtask.id == subtask_id).first()
+    if not db_sub:
+        return None
+    db.delete(db_sub)
+    db.commit()
+    return db_sub

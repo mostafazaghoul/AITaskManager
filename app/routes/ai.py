@@ -5,7 +5,7 @@ from typing import List
 
 from .. import crud, schemas
 from ..database import get_db
-from ..services import planner, parser
+from ..services import planner, parser, breakdown
 
 router = APIRouter(
     prefix="/ai",
@@ -33,6 +33,23 @@ def get_overdue_summary(db: Session = Depends(get_db)):
     Get all tasks that are past their due date and not completed.
     """
     return crud.get_overdue_tasks(db)
+
+@router.post("/breakdown/{task_id}", response_model=List[schemas.Subtask])
+def breakdown_task(task_id: int, db: Session = Depends(get_db)):
+    """
+    Use AI to break a task into 4-6 actionable subtasks, saving them to the database.
+    """
+    task = crud.get_task(db, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    try:
+        titles = breakdown.generate_subtasks(task.title, task.description)
+        return [crud.create_subtask(db, task_id, schemas.SubtaskCreate(title=t)) for t in titles]
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to break down task: {e}",
+        )
 
 @router.get("/plan/daily", response_model=schemas.DailyPlanResponse)
 def get_daily_plan(db: Session = Depends(get_db)):

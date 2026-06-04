@@ -38,3 +38,20 @@ def test_get_overdue_tasks(client: TestClient):
     response = client.get("/ai/summary/overdue")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+
+@patch('app.services.categorizer.get_task_category', return_value="Work")
+@patch('app.services.breakdown.generate_subtasks')
+def test_breakdown_task(mock_breakdown, mock_cat, client: TestClient):
+    create_resp = client.post("/tasks/", json={"title": "Build a website"})
+    task_id = create_resp.json()["id"]
+
+    mock_breakdown.return_value = ["Design wireframes", "Set up repository", "Build homepage"]
+
+    response = client.post(f"/ai/breakdown/{task_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 3
+    assert data[0]["title"] == "Design wireframes"
+    assert data[0]["task_id"] == task_id
+    mock_breakdown.assert_called_once_with("Build a website", None)
