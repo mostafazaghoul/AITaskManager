@@ -21,6 +21,26 @@
             --ai-border: #e0e7ff;
         }
 
+        [data-theme="dark"] {
+            --bg:        #0f172a;
+            --surface:   #1e293b;
+            --border:    #334155;
+            --text:      #f1f5f9;
+            --muted:     #94a3b8;
+            --primary:   #818cf8;
+            --primary-h: #6366f1;
+            --success:   #34d399;
+            --danger:    #f87171;
+            --ai-bg:     #1e1b4b;
+            --ai-border: #3730a3;
+        }
+
+        /* smooth colour transitions when toggling theme */
+        *, *::before, *::after { transition: background-color .22s, border-color .22s, color .22s; }
+        /* but keep interaction transitions instant */
+        .btn, .filter-btn, .cat-filter-btn, .btn-icon, .header-link, .theme-toggle,
+        input, textarea, select { transition: background-color .22s, border-color .22s, color .22s, box-shadow .15s; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
             background: var(--bg);
@@ -635,6 +655,45 @@
         .edit-btns { display: flex; gap: .4rem; }
         .btn-icon.edit-icon:hover { border-color: var(--primary); color: var(--primary); background: var(--ai-bg); }
 
+        /* ── Dark mode overrides ─────────────────────── */
+        [data-theme="dark"] .smart-card {
+            background: linear-gradient(135deg, #1e1b4b, #2e1065);
+        }
+        [data-theme="dark"] .ai-card {
+            background: linear-gradient(160deg, var(--surface), var(--ai-bg));
+        }
+        [data-theme="dark"] .smart-row input,
+        [data-theme="dark"] .edit-title,
+        [data-theme="dark"] input:focus,
+        [data-theme="dark"] textarea:focus,
+        [data-theme="dark"] select:focus {
+            background: var(--surface);
+        }
+        [data-theme="dark"] .btn-ghost {
+            background: var(--surface);
+        }
+        [data-theme="dark"] .overdue-item {
+            background: #450a0a;
+            border-color: #7f1d1d;
+            color: #fca5a5;
+        }
+        [data-theme="dark"] .progress-track { background: #334155; }
+        [data-theme="dark"] .task-item.done  { background: #0f172a; }
+
+        /* ── Theme toggle button ─────────────────────── */
+        .theme-toggle {
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            cursor: pointer;
+            font-size: .9rem;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0;
+            color: var(--muted);
+        }
+        .theme-toggle:hover { background: var(--bg); color: var(--text); }
+
         /* ── Responsive ──────────────────────────────── */
         @media (max-width: 720px) {
             .container { grid-template-columns: 1fr; padding: 1rem; }
@@ -651,7 +710,10 @@
         <div class="logo-icon">✓</div>
         AI Task Manager
     </div>
-    <a class="header-link" href="/docs" target="_blank">API Docs ↗</a>
+    <div style="display:flex;align-items:center;gap:.6rem">
+        <button id="theme-btn" class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+        <a class="header-link" href="/docs" target="_blank">API Docs ↗</a>
+    </div>
 </header>
 
 <main class="container">
@@ -787,8 +849,22 @@
     let filterCat   = 'all';
     let searchQuery = '';
 
+    /* ── Theme ─────────────────────────────────────── */
+    function initTheme() {
+        const saved = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', saved);
+        document.getElementById('theme-btn').textContent = saved === 'dark' ? '☀️' : '🌙';
+    }
+    function toggleTheme() {
+        const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        document.getElementById('theme-btn').textContent = next === 'dark' ? '☀️' : '🌙';
+    }
+
     /* ── Boot ──────────────────────────────────────── */
     document.addEventListener('DOMContentLoaded', () => {
+        initTheme();
         fetchTasks();
         fetchStats();
         document.getElementById('task-form').addEventListener('submit', createTask);
