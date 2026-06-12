@@ -1,24 +1,41 @@
-# app/services/parser.py
-import os
-import json
+"""Natural-language task parsing via the OpenAI API.
+
+Turns free-form text like "urgent report due Friday at 3pm" into the
+structured fields of a task: title, description, due date, priority.
+"""
 import datetime
-from openai import OpenAI
-from dotenv import load_dotenv
+import json
 
-load_dotenv()
+from openai import OpenAIError
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from ..constants import DEFAULT_PRIORITY, VALID_PRIORITIES
+from .llm import OPENAI_MODEL, AIServiceError, get_client
 
-VALID_PRIORITIES = ["High", "Medium", "Low"]
+# Deterministic output is preferred for extraction tasks.
+PARSE_TEMPERATURE: float = 0.0
+PARSE_MAX_TOKENS: int = 150
 
-def parse_task_from_text(text: str) -> dict:
+# Fallback title length when the model omits one.
+FALLBACK_TITLE_LENGTH: int = 100
+
+SYSTEM_PROMPT: str = (
+    "You are a task parser. Extract structured task data from natural "
+    "language. Return valid JSON only."
+)
+
+
+def _build_prompt(text: str, now: datetime.datetime) -> str:
+    """Build the user prompt for the extraction request.
+
+    Args:
+        text: The raw natural-language input.
+        now: Current UTC time, given to the model so relative dates
+            ("tomorrow", "Friday") resolve correctly.
+
+    Returns:
+        The fully formatted prompt string.
     """
-    Uses GPT-4o-mini to extract title, description, due_date, and priority
-    from a natural language string. Returns a plain dict.
-    """
-    now = datetime.datetime.now(datetime.UTC)
-
-    user_prompt = f"""Today is {now.strftime("%A, %B %d, %Y")} and the current time is {now.strftime("%H:%M UTC")}.
+    return f"""Today is {now.strftime("%A, %B %d, %Y")} and the current time is {now.strftime("%H:%M UTC")}.
 
 Extract task details from the input below and return a JSON object with exactly these keys:
 - "title": concise task title (string, required)
@@ -32,24 +49,42 @@ Extract task details from the input below and return a JSON object with exactly 
 Input: "{text}"
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": "You are a task parser. Extract structured task data from natural language. Return valid JSON only."},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.0,
-        max_tokens=150,
-    )
 
-    data = json.loads(response.choices[0].message.content)
+def parse_task_from_text(text: str) -> dict:
+    """Extract structured task fields from a natural-language string.
 
-    # Sanitize to guarantee required fields exist
-    data.setdefault("title", text[:100])
+    Args:
+        text: Plain-English task description.
+
+    Returns:
+        A dict with ``title``, ``description``, ``due_date``, and
+        ``priority`` keys, sanitized so required fields always exist.
+
+    Raises:
+        AIServiceError: If the API call fails or returns unusable JSON.
+    """
+    now = datetime.datetime.now(datetime.UTC)
+
+    try:
+        response = get_client().chat.completions.create(
+            model=OPENAI_MODEL,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": _build_prompt(text, now)},
+            ],
+            temperature=PARSE_TEMPERATURE,
+            max_tokens=PARSE_MAX_TOKENS,
+        )
+        data = json.loads(response.choices[0].message.content)
+    except (OpenAIError, json.JSONDecodeError) as exc:
+        raise AIServiceError(f"Task parsing failed: {exc}") from exc
+
+    # Sanitize so required fields always exist with sensible defaults.
+    data.setdefault("title", text[:FALLBACK_TITLE_LENGTH])
     data.setdefault("description", None)
     data.setdefault("due_date", None)
     if data.get("priority") not in VALID_PRIORITIES:
-        data["priority"] = "Medium"
+        data["priority"] = DEFAULT_PRIORITY
 
     return data
