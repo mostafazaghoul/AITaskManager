@@ -583,6 +583,21 @@
         .task-item.done { opacity: .5; background: var(--bg-soft); }
         .task-item.done .task-title { text-decoration: line-through; color: var(--muted); }
 
+        /* slide-out while a delete request is in flight */
+        .task-item.removing {
+            opacity: 0;
+            transform: translateX(14px);
+            transition: opacity .22s ease, transform .22s ease;
+            pointer-events: none;
+        }
+
+        /* brief teal ring on a freshly added task */
+        @keyframes flashIn {
+            0%   { box-shadow: 0 0 0 3px var(--accent-ring); }
+            100% { box-shadow: none; }
+        }
+        .task-item.flash { animation: fadeIn .22s ease, flashIn 1.2s ease; }
+
         /* priority accent bar — High red / Medium amber / Low green */
         .pri-High   { border-left-color: var(--pri-high); }
         .pri-Medium { border-left-color: var(--pri-med); }
@@ -666,7 +681,11 @@
             padding: 2.4rem 1rem;
             color: var(--muted);
             font-size: .85rem;
+            animation: fadeIn .25s ease;
         }
+        .empty-icon  { font-size: 1.7rem; margin-bottom: .45rem; }
+        .empty-title { font-size: .88rem; font-weight: 600; color: var(--text); margin-bottom: .15rem; }
+        .empty-hint  { font-size: .77rem; }
 
         .skeleton-row {
             height: 58px;
@@ -773,6 +792,28 @@
             color: var(--muted);
             font-size: .8rem;
             padding: .35rem 0;
+        }
+
+        /* result area revealed inside the Planner / Overdue cards */
+        .ai-result {
+            margin-top: 1rem;
+            padding-top: .9rem;
+            border-top: 1px solid var(--border);
+            animation: fadeIn .25s ease;
+        }
+
+        .error-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: .6rem;
+            padding: 1.2rem 1rem;
+            text-align: center;
+            color: var(--danger);
+            font-size: .82rem;
+            background: var(--danger-soft);
+            border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+            border-radius: 10px;
         }
 
         /* ── Toast ───────────────────────────────────────────────── */
@@ -1038,6 +1079,33 @@
             color: var(--text);
         }
 
+        /* ── Delete confirmation modal ───────────────────────────── */
+        .confirm-modal { width: min(380px, 90vw); }
+
+        .confirm-text {
+            font-size: .85rem;
+            color: var(--muted);
+            line-height: 1.55;
+            margin-bottom: 1.1rem;
+            overflow-wrap: break-word;
+        }
+        .confirm-text strong { color: var(--text); }
+
+        .confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+
+        .btn-danger { background: #dc2626; color: #fff; }
+        .btn-danger:not(:disabled):hover {
+            background: #ef4444;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, .3);
+        }
+
+        .btn-neutral {
+            background: var(--bg-soft);
+            color: var(--text);
+            border: 1px solid var(--border-strong);
+        }
+        .btn-neutral:not(:disabled):hover { border-color: var(--muted); }
+
         /* ── Responsive ──────────────────────────────────────────── */
         @media (max-width: 900px) {
             .container {
@@ -1194,6 +1262,7 @@
             <button class="btn btn-ai btn-block" id="plan-btn" onclick="generatePlan()">
                 ✨ Generate Daily Plan
             </button>
+            <div class="ai-result" id="plan-result" style="display:none"></div>
         </section>
 
         <!-- Overdue summary -->
@@ -1208,12 +1277,7 @@
             <button class="btn btn-ghost btn-block" id="overdue-btn" onclick="loadOverdue()">
                 ⚠️ Show Overdue Tasks
             </button>
-        </section>
-
-        <!-- Shared result area -->
-        <section class="card ai-result-card" id="ai-result" style="display:none">
-            <div class="ai-result-title" id="ai-result-title"></div>
-            <div id="ai-result-body"></div>
+            <div class="ai-result" id="overdue-result" style="display:none"></div>
         </section>
 
     </aside>
@@ -1221,6 +1285,20 @@
 </main>
 
 <div id="toast"></div>
+
+<div class="shortcuts-overlay" id="confirm-overlay" onclick="if(event.target===this)closeConfirm()">
+    <div class="shortcuts-modal confirm-modal">
+        <div class="shortcuts-modal-header">
+            <span>Delete task?</span>
+            <button class="btn-icon" onclick="closeConfirm()">✕</button>
+        </div>
+        <p class="confirm-text" id="confirm-text"></p>
+        <div class="confirm-actions">
+            <button class="btn btn-neutral" onclick="closeConfirm()">Cancel</button>
+            <button class="btn btn-danger" id="confirm-btn">Delete</button>
+        </div>
+    </div>
+</div>
 
 <div class="shortcuts-overlay" id="shortcuts-overlay" onclick="if(event.target===this)toggleShortcuts()">
     <div class="shortcuts-modal">
@@ -1252,6 +1330,12 @@
 </div>
 
 <script>
+    /* ── Constants ─────────────────────────────────── */
+    const DEFAULT_THEME       = 'dark';
+    const TOAST_DURATION_MS   = 3500;
+    const REMOVE_ANIMATION_MS = 220;   // must match .task-item.removing transition
+    const SKELETON_HTML       = '<div class="skeleton-row"></div>'.repeat(3);
+
     /* ── State ─────────────────────────────────────── */
     let tasks          = [];
     let filter         = 'all';
@@ -1262,7 +1346,7 @@
 
     /* ── Theme ─────────────────────────────────────── */
     function initTheme() {
-        const saved = localStorage.getItem('theme') || 'light';
+        const saved = localStorage.getItem('theme') || DEFAULT_THEME;
         document.documentElement.setAttribute('data-theme', saved);
         document.getElementById('theme-btn').textContent = saved === 'dark' ? '☀️' : '🌙';
     }
@@ -1291,15 +1375,29 @@
 
     /* ── API helper ────────────────────────────────── */
     async function api(path, opts = {}) {
-        const res = await fetch(path, {
-            headers: { 'Content-Type': 'application/json' },
-            ...opts,
-        });
+        let res;
+        try {
+            res = await fetch(path, {
+                headers: { 'Content-Type': 'application/json' },
+                ...opts,
+            });
+        } catch (_) {
+            throw new Error('Network error — is the server running?');
+        }
         if (!res.ok) {
             const body = await res.json().catch(() => ({}));
-            throw new Error(body.detail || `HTTP ${res.status}`);
+            throw new Error(formatApiError(body, res.status));
         }
         return res.json();
+    }
+
+    // FastAPI returns either a string detail or a list of validation errors.
+    function formatApiError(body, status) {
+        if (typeof body.detail === 'string') return body.detail;
+        if (Array.isArray(body.detail)) {
+            return body.detail.map(d => d.msg || 'Invalid input').join('; ');
+        }
+        return `Request failed (HTTP ${status})`;
     }
 
     /* ── Smart parse ───────────────────────────────── */
@@ -1371,6 +1469,7 @@
             const task = await api('/tasks/', { method: 'POST', body: JSON.stringify(body) });
             tasks.push(task);
             render();
+            flashTask(task.id);
             fetchStats();
             input.value = '';
 
@@ -1407,12 +1506,17 @@
 
     /* ── Load & render tasks ───────────────────────── */
     async function fetchTasks() {
+        const list = document.getElementById('task-list');
+        list.innerHTML = SKELETON_HTML;
         try {
             tasks = await api('/tasks/');
             render();
         } catch (e) {
-            document.getElementById('task-list').innerHTML =
-                `<div class="empty-state">Could not load tasks: ${esc(e.message)}</div>`;
+            list.innerHTML = `
+                <div class="error-state">
+                    <span>Could not load tasks: ${esc(e.message)}</span>
+                    <button class="btn btn-ghost" onclick="fetchTasks()">↻ Retry</button>
+                </div>`;
         }
     }
 
@@ -1438,10 +1542,7 @@
         countEl.textContent = `Tasks — ${active} active`;
 
         if (!visible.length) {
-            const emptyMsg = searchQuery || filterCat !== 'all'
-                ? 'No tasks match your search.'
-                : { all: 'No tasks yet. Add one above!', active: 'No active tasks — great job! 🎉', done: 'Nothing completed yet.' }[filter];
-            list.innerHTML = `<div class="empty-state">${emptyMsg}</div>`;
+            list.innerHTML = emptyStateHtml();
             return;
         }
 
@@ -1457,6 +1558,26 @@
             `<button class="cat-filter-btn${filterCat==='all'?' active':''}" data-cat="all" onclick="setCatFilter('all')">All</button>`,
             ...cats.map(c => `<button class="cat-filter-btn${filterCat===c?' active':''}" data-cat="${esc(c)}" onclick="setCatFilter('${esc(c)}')">${esc(c)}</button>`)
         ].join('');
+    }
+
+    function emptyStateHtml() {
+        if (searchQuery || filterCat !== 'all') {
+            return emptyState('🔍', 'No matching tasks', 'Try a different search or filter.');
+        }
+        const variants = {
+            all:    ['🌱', 'No tasks yet', 'Type something in the Smart Add bar above to get started.'],
+            active: ['🎉', 'All clear!', 'No active tasks — enjoy the breathing room.'],
+            done:   ['📝', 'Nothing completed yet', 'Check off a task and it will show up here.'],
+        };
+        return emptyState(...variants[filter]);
+    }
+
+    function emptyState(icon, title, hint) {
+        return `<div class="empty-state">
+            <div class="empty-icon">${icon}</div>
+            <div class="empty-title">${title}</div>
+            <div class="empty-hint">${hint}</div>
+        </div>`;
     }
 
     function onSearch(val) { searchQuery = val; render(); }
@@ -1525,6 +1646,7 @@
             const task = await api('/tasks/', { method: 'POST', body: JSON.stringify(body) });
             tasks.push(task);
             render();
+            flashTask(task.id);
             fetchStats();
             e.target.reset();
             document.getElementById('f-priority').value = 'Medium';
@@ -1553,17 +1675,54 @@
         }
     }
 
-    /* ── Delete ────────────────────────────────────── */
-    async function remove(id) {
+    /* ── Delete (with confirmation) ────────────────── */
+    let confirmCallback = null;
+
+    function openConfirm(messageHtml, onConfirm) {
+        document.getElementById('confirm-text').innerHTML = messageHtml;
+        confirmCallback = onConfirm;
+        document.getElementById('confirm-overlay').classList.add('open');
+        document.getElementById('confirm-btn').focus();
+    }
+
+    function closeConfirm() {
+        confirmCallback = null;
+        document.getElementById('confirm-overlay').classList.remove('open');
+    }
+
+    document.getElementById('confirm-btn').addEventListener('click', () => {
+        const cb = confirmCallback;
+        closeConfirm();
+        if (cb) cb();
+    });
+
+    function remove(id) {
+        const t = tasks.find(t => t.id === id);
+        if (!t) return;
+        const subCount = (subtasksCache[id] || []).length;
+        const extra = subCount ? ` and its ${subCount} subtask${subCount > 1 ? 's' : ''}` : '';
+        openConfirm(
+            `This will permanently delete <strong>"${esc(t.title)}"</strong>${extra}. This cannot be undone.`,
+            () => performDelete(id)
+        );
+    }
+
+    async function performDelete(id) {
+        const el = document.getElementById(`t-${id}`);
+        if (el) el.classList.add('removing');
         try {
             await api(`/tasks/${id}`, { method: 'DELETE' });
-            tasks = tasks.filter(t => t.id !== id);
-            delete subtasksCache[id];
-            expanded.delete(id);
-            render();
-            fetchStats();
+            // Let the slide-out finish before re-rendering the list
+            setTimeout(() => {
+                tasks = tasks.filter(t => t.id !== id);
+                delete subtasksCache[id];
+                expanded.delete(id);
+                render();
+                fetchStats();
+            }, REMOVE_ANIMATION_MS);
             toast('Task deleted.', 'ok');
         } catch (err) {
+            if (el) el.classList.remove('removing');
             toast('Delete failed: ' + err.message, 'err');
         }
     }
@@ -1746,13 +1905,21 @@
     /* ── AI: Daily Plan ────────────────────────────── */
     async function generatePlan() {
         const btn = document.getElementById('plan-btn');
+        const out = document.getElementById('plan-result');
         setBtn(btn, '<span class="spinner"></span> Thinking…', true);
-        showAiResult('✨ Daily Plan', '<div class="thinking"><span class="spinner dark"></span> GPT is writing your plan…</div>');
+        out.style.display = '';
+        out.innerHTML = '<div class="thinking"><span class="spinner dark"></span> GPT is writing your plan…</div>';
         try {
             const { plan } = await api('/ai/plan/daily');
-            setAiBody(`<div class="ai-plan-text">${esc(plan)}</div>`);
+            out.innerHTML = `
+                <div class="ai-result-title">✨ Your Plan</div>
+                <div class="ai-plan-text">${esc(plan)}</div>`;
         } catch (err) {
-            setAiBody(`<span style="color:var(--danger);font-size:.82rem">Error: ${esc(err.message)}</span>`);
+            out.innerHTML = `
+                <div class="error-state">
+                    <span>${esc(err.message)}</span>
+                    <button class="btn btn-ghost" onclick="generatePlan()">↻ Try again</button>
+                </div>`;
         } finally {
             setBtn(btn, '✨ Generate Daily Plan', false);
         }
@@ -1761,38 +1928,43 @@
     /* ── AI: Overdue ───────────────────────────────── */
     async function loadOverdue() {
         const btn = document.getElementById('overdue-btn');
+        const out = document.getElementById('overdue-result');
         setBtn(btn, '<span class="spinner dark"></span> Loading…', true);
-        showAiResult('⚠️ Overdue Tasks', '<div class="thinking"><span class="spinner dark"></span> Checking…</div>');
+        out.style.display = '';
+        out.innerHTML = '<div class="thinking"><span class="spinner dark"></span> Checking…</div>';
         try {
             const list = await api('/ai/summary/overdue');
             if (!list.length) {
-                setAiBody('<p style="font-size:.82rem;color:var(--muted)">No overdue tasks — you\'re on track! ✅</p>');
+                out.innerHTML = '<p style="font-size:.82rem;color:var(--muted)">No overdue tasks — you\'re on track! ✅</p>';
             } else {
-                setAiBody(`<div class="overdue-list">${
-                    list.map(t => `<div class="overdue-item">
-                        <strong>${esc(t.title)}</strong>${t.due_date ? ` — ${fmtDate(new Date(t.due_date))}` : ''}
-                    </div>`).join('')
-                }</div>`);
+                out.innerHTML = `
+                    <div class="ai-result-title">⚠️ ${list.length} overdue</div>
+                    <div class="overdue-list">${
+                        list.map(t => `<div class="overdue-item">
+                            <strong>${esc(t.title)}</strong>${t.due_date ? ` — ${fmtDate(new Date(t.due_date))}` : ''}
+                        </div>`).join('')
+                    }</div>`;
             }
         } catch (err) {
-            setAiBody(`<span style="color:var(--danger);font-size:.82rem">Error: ${esc(err.message)}</span>`);
+            out.innerHTML = `
+                <div class="error-state">
+                    <span>${esc(err.message)}</span>
+                    <button class="btn btn-ghost" onclick="loadOverdue()">↻ Try again</button>
+                </div>`;
         } finally {
             setBtn(btn, '⚠️ Show Overdue Tasks', false);
         }
     }
 
     /* ── Helpers ───────────────────────────────────── */
-    function showAiResult(title, bodyHtml) {
-        document.getElementById('ai-result').style.display = 'block';
-        document.getElementById('ai-result-title').textContent = title;
-        document.getElementById('ai-result-body').innerHTML = bodyHtml;
-    }
-    function setAiBody(html) {
-        document.getElementById('ai-result-body').innerHTML = html;
-    }
     function setBtn(btn, html, disabled) {
         btn.innerHTML = html;
         btn.disabled  = disabled;
+    }
+
+    function flashTask(id) {
+        const el = document.getElementById(`t-${id}`);
+        if (el) el.classList.add('flash');
     }
 
     function toDatetimeLocal(iso) {
@@ -1827,6 +1999,7 @@
 
         if (e.key === 'Escape') {
             document.getElementById('shortcuts-overlay').classList.remove('open');
+            closeConfirm();
             if (typing) document.activeElement.blur();
             return;
         }
@@ -1851,7 +2024,7 @@
         el.textContent = msg;
         el.className = `show ${type}`;
         clearTimeout(toastT);
-        toastT = setTimeout(() => el.className = '', 3500);
+        toastT = setTimeout(() => el.className = '', TOAST_DURATION_MS);
     }
 </script>
 </body>
